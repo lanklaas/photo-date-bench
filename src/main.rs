@@ -55,11 +55,17 @@ const TARGET_H: u32 = cm_to_px(HEIGHT_CM);
 const MARGIN_PX: u32 = mm_to_px(MARGIN_MM);
 
 fn main() -> Result<(), AppError> {
+    #[cfg(target_os = "windows")]
+    let events = tracing_subscriber::fmt::layer()
+        .with_span_events(FmtSpan::CLOSE)
+        .with_ansi(false);
+    #[cfg(not(target_os = "windows"))]
+    let events = tracing_subscriber::fmt::layer().with_span_events(FmtSpan::CLOSE);
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
-        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::CLOSE))
+        .with(events)
         .init();
     let App { path, threads } = App::parse();
     let root = path;
