@@ -1,0 +1,22 @@
+use std::{io, string::FromUtf8Error};
+
+use ab_glyph::InvalidFont;
+use image::ImageError;
+
+#[derive(Debug, thiserror::Error)]
+pub enum AppError {
+    #[error(transparent)]
+    Regex(#[from] regex::Error),
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    Image(#[from] ImageError),
+    #[error(transparent)]
+    InvalidFont(#[from] InvalidFont),
+    #[error(transparent)]
+    Exif(#[from] exif::Error),
+    #[error(transparent)]
+    Utf8Parse(#[from] FromUtf8Error),
+    #[error(transparent)]
+    DateTimeParse(#[from] jiff::Error),
+}
