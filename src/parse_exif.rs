@@ -11,7 +11,16 @@ pub fn get_image_date<P: AsRef<Path>>(file_path: P) -> Result<Option<DateTime>, 
     let file = File::open(file_path)?;
     let mut reader = BufReader::new(file);
     let exifreader = exif::Reader::new();
-    let exif = exifreader.read_from_container(&mut reader)?;
+    let exif = match exifreader.read_from_container(&mut reader) {
+        Ok(e) => e,
+        Err(exif::Error::NotFound(e)) => {
+            debug!(
+                "{e}. Exif data not found. Probably an image we already processed. Returning none"
+            );
+            return Ok(None);
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     // Look for the "DateTimeOriginal" tag (Tag 36867)
     let Some(Field {

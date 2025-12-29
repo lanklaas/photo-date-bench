@@ -34,9 +34,16 @@ pub fn date_from_filename<P: AsRef<Path>>(path: P) -> Option<String> {
     None
 }
 
-pub fn load_font() -> Result<FontRef<'static>, AppError> {
+pub fn load_bold_font() -> Result<FontRef<'static>, AppError> {
     // Bundle the font with the program so it works the same on Ubuntu + Windows.
     let font_data: &[u8] = include_bytes!("../assets/arialroundedmtbold.ttf");
+    
+    Ok(FontRef::try_from_slice(font_data)?)
+}
+
+pub fn load_regular_font() -> Result<FontRef<'static>, AppError> {
+    // Bundle the font with the program so it works the same on Ubuntu + Windows.
+    let font_data: &[u8] = include_bytes!("../assets/Arial Regular.ttf");
     
     Ok(FontRef::try_from_slice(font_data)?)
 }

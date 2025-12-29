@@ -1,3 +1,4 @@
+mod draw_text;
 mod error;
 mod image_ops;
 mod parse_exif;
@@ -24,8 +25,11 @@ use walkdir::WalkDir;
 struct App {
     #[arg(help = "Path to the directory conaining the image files.")]
     path: PathBuf,
-    #[clap(short, help = "Output directory", default_value = "./output")]
-    output: PathBuf,
+    #[clap(
+        short,
+        help = "The amount of cpus to use to process images. The default is all the available cpus on the computer"
+    )]
+    threads: Option<usize>,
 }
 
 const WIDTH_CM: f32 = 8.0;
@@ -35,6 +39,8 @@ const DPI: f32 = 300.0;
 const TEXT_COLOR_RGB: (u8, u8, u8) = (255, 140, 0); // orange
 const MARGIN_MM: f32 = 5.0;
 const BACKGROUND_RGB: (u8, u8, u8) = (255, 255, 255); // white
+
+const YELLOW: Rgba<u8> = Rgba([255, 255, 84, 255]);
 
 const fn mm_to_px(mm: f32) -> u32 {
     ((mm / 25.4) * DPI).round() as u32
@@ -55,10 +61,11 @@ fn main() -> Result<(), AppError> {
         )
         .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::CLOSE))
         .init();
-    let App { path, output } = App::parse();
+    let App { path, threads } = App::parse();
     let root = path;
 
-    let font = image_ops::load_font()?;
+    let font = image_ops::load_bold_font()?;
+    let regular_font = image_ops::load_regular_font()?;
 
     // =========================
     // Auto-detect start number
@@ -101,7 +108,7 @@ fn main() -> Result<(), AppError> {
     // =========================
     // Process by date
     // =========================
-    let work_cpus = num_cpus::get() / 2;
+    let work_cpus = threads.unwrap_or(num_cpus::get());
     info!("Using {work_cpus} cpus to process images");
     let tp = ThreadPool::new(work_cpus);
     let number: Arc<AtomicUsize> = Arc::new(number.into());
@@ -115,9 +122,10 @@ fn main() -> Result<(), AppError> {
             let out_dir = out_dir.clone();
             let number = number.clone();
             let font = font.clone();
+            let regular_font = regular_font.clone();
             let date = date.clone();
             tp.execute(move || {
-                if let Err(e) = process_image(&path, font, &date, &number, out_dir) {
+                if let Err(e) = process_image(&path, font, regular_font, &date, &number, out_dir) {
                     error!("{e}");
                 }
             });
@@ -133,6 +141,7 @@ fn main() -> Result<(), AppError> {
 fn process_image(
     path: &Path,
     font: FontRef,
+    regular_font: FontRef,
     date: &str,
     number: &AtomicUsize,
     out_dir: PathBuf,
@@ -179,8 +188,23 @@ fn process_image(
     // Alpha-blend RGBA text onto RGB final image
     image_ops::overlay_rgba_on_rgb(&mut final_img, &text_img, x, y);
 
+    let number = number.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+    let toptext = format_filename_as_image_text(path, number)?;
+
+    // Paste top-left relative to the photo area (not the full canvas)
+    draw_text::draw_multiline_text_top_left(
+        &mut final_img,
+        (offset_x, offset_y),
+        (rw, rh),
+        toptext,
+        &regular_font,
+        MARGIN_PX,
+        YELLOW,
+    );
+
     // Save as sequential number
-    let new_name = format!("{}.jpg", number.load(std::sync::atomic::Ordering::SeqCst));
+    let new_name = format!("{number}.jpg");
     let out_path = out_dir.join(&new_name);
 
     let dyn_out = DynamicImage::ImageRgb8(final_img);
@@ -196,6 +220,48 @@ fn process_image(
         new_name
     );
 
-    number.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     Ok(())
+}
+
+/// Reads additional info from the file name and formats it for rendering to the image
+fn format_filename_as_image_text<P: AsRef<Path>>(
+    path: P,
+    number: usize,
+) -> Result<[String; 3], AppError> {
+    let Some(name) = path.as_ref().file_name().and_then(|x| x.to_str()) else {
+        return default_number_text(number);
+    };
+
+    let mut splits = name.split("_");
+
+    let Some(first) = splits.next() else {
+        return default_number_text(number);
+    };
+    if first.chars().next().is_some_and(|x| x.is_ascii_digit()) {
+        return default_number_text(number);
+    }
+
+    let Some(second) = splits.next() else {
+        return Ok([
+            format!("File Nr.: {number}"),
+            first.to_string(),
+            "".to_string(),
+        ]);
+    };
+    if second.chars().next().is_some_and(|x| x.is_ascii_digit()) {
+        return default_number_text(number);
+    }
+    Ok([
+        format!("File Nr.: {number}"),
+        first.to_string(),
+        second.to_string(),
+    ])
+}
+
+fn default_number_text(number: usize) -> Result<[String; 3], AppError> {
+    Ok([
+        format!("File Nr.: {number}"),
+        "".to_string(),
+        "".to_string(),
+    ])
 }
