@@ -5,9 +5,9 @@ mod parse_exif;
 
 use ab_glyph::FontRef;
 use clap::Parser;
-use draw_text::{DrawPosition, PhotoOffset, PhotoSize};
+use draw_text::{DrawPosition, MultilineDraw, PhotoOffset, PhotoSize};
 use error::AppError;
-use image::{imageops, DynamicImage, GenericImage, ImageBuffer, Rgb, RgbImage, Rgba};
+use image::{DynamicImage, GenericImage, ImageBuffer, Rgb, RgbImage, Rgba};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
@@ -175,43 +175,25 @@ fn process_image(
 
     let number = number.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-    // Paste top-left relative to the photo area (not the full canvas)
-    draw_text::draw_multiline_text(
-        &mut final_img,
-        PhotoOffset {
-            x: offset_x,
-            y: offset_y,
-        },
-        PhotoSize {
+    let mut text_draw = MultilineDraw {
+        photo_size: PhotoSize {
             width: rw,
             height: rh,
         },
-        &[date],
-        &font,
-        MARGIN_PX,
-        ORANGE,
-        DrawPosition::BottomRight,
-    );
+        photo_offset: PhotoOffset {
+            x: offset_x,
+            y: offset_y,
+        },
+        margin_px: MARGIN_PX,
+        destination: &mut final_img,
+    };
+
+    text_draw.draw_multiline_text(&[date], &font, ORANGE, DrawPosition::BottomRight);
 
     let toptext = format_filename_as_image_text(path, number)?;
 
     // Paste top-left relative to the photo area (not the full canvas)
-    draw_text::draw_multiline_text(
-        &mut final_img,
-        PhotoOffset {
-            x: offset_x,
-            y: offset_y,
-        },
-        PhotoSize {
-            width: rw,
-            height: rh,
-        },
-        &toptext,
-        &regular_font,
-        MARGIN_PX,
-        YELLOW,
-        DrawPosition::TopLeft,
-    );
+    text_draw.draw_multiline_text(&toptext, &regular_font, YELLOW, DrawPosition::TopLeft);
 
     // Save as sequential number
     let new_name = format!("{number}.jpg");
