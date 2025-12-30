@@ -87,12 +87,22 @@ fn main() -> Result<(), AppError> {
     // =========================
     let mut images_by_date: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
 
-    for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(&root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        // Ignore previously created out dirs
+        .filter(|x| !(x.path().starts_with("output_") && x.path().ends_with("_photoproc")))
+    {
         if !entry.file_type().is_file() {
             continue;
         }
         let path = entry.path();
         if !image_ops::is_image_file(path) {
+            continue;
+        }
+
+        // Do not process files that was previously done
+        if filename_is_number_only(path)? {
             continue;
         }
 
@@ -121,7 +131,7 @@ fn main() -> Result<(), AppError> {
     let tp = ThreadPool::new(work_cpus);
     let number: Arc<AtomicUsize> = Arc::new(number.into());
     for (date, list) in images_by_date.into_iter() {
-        let out_dir = root.join(format!("output_{}", date));
+        let out_dir = root.join(format!("output_{}_photoproc", date));
         fs::create_dir_all(&out_dir)?;
 
         info!("\n➡️ Processing date {} → folder: {:?}", date, out_dir);
@@ -236,4 +246,12 @@ fn format_filename_as_image_text<P: AsRef<Path>>(
 
 fn default_number_text(number: usize) -> Result<Vec<String>, AppError> {
     Ok(vec![format!("File Nr.: {number}")])
+}
+
+fn filename_is_number_only(path: &Path) -> Result<bool, AppError> {
+    let Some(name) = path.file_stem().and_then(|x| x.to_str()) else {
+        return Ok(false);
+    };
+
+    Ok(name.parse::<usize>().is_ok())
 }
