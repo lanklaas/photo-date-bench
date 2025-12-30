@@ -245,7 +245,7 @@ fn format_filename_as_image_text<P: AsRef<Path>>(
 }
 
 fn default_number_text(number: usize) -> Result<Vec<String>, AppError> {
-    Ok(vec![format!("File Nr.: {number}")])
+    Ok(vec![format!("Foto Nr.: {number}")])
 }
 
 fn filename_is_number_only(path: &Path) -> Result<bool, AppError> {
