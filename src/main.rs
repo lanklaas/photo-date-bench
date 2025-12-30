@@ -5,7 +5,7 @@ mod parse_exif;
 
 use ab_glyph::FontRef;
 use clap::Parser;
-use draw_text::{DrawPosition, MultilineDraw, PhotoOffset, PhotoSize};
+use draw_text::{DrawPosition, FontSize, MultilineDraw, PhotoOffset, PhotoSize};
 use error::AppError;
 use image::{DynamicImage, GenericImage, ImageBuffer, Rgb, RgbImage, Rgba};
 use std::fs;
@@ -73,7 +73,7 @@ fn main() -> Result<(), AppError> {
     let root = path;
 
     let font = image_ops::load_bold_font()?;
-    let regular_font = image_ops::load_regular_font()?;
+    let regular_font = image_ops::load_arial_bold()?;
 
     // =========================
     // Auto-detect start number
@@ -198,12 +198,16 @@ fn process_image(
         destination: &mut final_img,
     };
 
-    text_draw.draw_multiline_text(&[date], &font, ORANGE, DrawPosition::BottomRight);
+    let fs = FontSize { pt: 10, dpi: DPI };
+
+    text_draw.draw_multiline_text(&[date], &font, fs, ORANGE, DrawPosition::BottomRight);
 
     let toptext = format_filename_as_image_text(path, number)?;
 
+    let fs = FontSize { pt: 8, dpi: DPI };
+
     // Paste top-left relative to the photo area (not the full canvas)
-    text_draw.draw_multiline_text(&toptext, &regular_font, YELLOW, DrawPosition::TopLeft);
+    text_draw.draw_multiline_text(&toptext, &regular_font, fs, YELLOW, DrawPosition::TopLeft);
 
     // Save as sequential number
     let new_name = format!("{number}.jpg");

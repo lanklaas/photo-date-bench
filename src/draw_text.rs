@@ -1,4 +1,4 @@
-use crate::image_ops::overlay_rgba_on_rgb;
+use crate::image_ops::overlay_premul_rgba_on_rgb;
 use ab_glyph::{FontRef, PxScale};
 use image::imageops;
 use image::{RgbImage, Rgba, RgbaImage};
@@ -35,6 +35,23 @@ pub struct MultilineDraw<'a> {
     pub destination: &'a mut RgbImage,
 }
 
+const fn pt_to_px(pt: usize, dpi: f32) -> f32 {
+    pt as f32 * (dpi / 72.)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FontSize {
+    pub pt: usize,
+    pub dpi: f32,
+}
+
+impl FontSize {
+    fn as_px_scale(&self) -> PxScale {
+        let px = pt_to_px(self.pt, self.dpi);
+        PxScale::from(px)
+    }
+}
+
 impl<'a> MultilineDraw<'a> {
     /// Draw lines of text at the specified of the photo area.
     /// - `lines`: exactly 3 lines of text
@@ -44,6 +61,7 @@ impl<'a> MultilineDraw<'a> {
         &mut self,
         lines: &[S],
         font: &FontRef,
+        font_size: FontSize,
         color: Rgba<u8>,
         position: DrawPosition,
     ) {
@@ -55,7 +73,7 @@ impl<'a> MultilineDraw<'a> {
         } = self;
         // Text height ~4% of photo height (same scale logic as date)
         let line_height_px = (photo_size.height as f32 * 0.04).max(12.0);
-        let scale = PxScale::from(line_height_px);
+        let scale = font_size.as_px_scale();
 
         // Line spacing: 120% of font size
         let line_spacing = (line_height_px * 1.2).round() as u32;
@@ -104,7 +122,7 @@ impl<'a> MultilineDraw<'a> {
                 let x = photo_offset.x + margin_px;
                 let y = photo_offset.y + margin_px;
 
-                overlay_rgba_on_rgb(destination, &text_img, x, y);
+                overlay_premul_rgba_on_rgb(destination, &text_img, x, y);
             }
             DrawPosition::BottomRight => {
                 // Paste bottom-right relative to the photo area (not the full canvas)
@@ -116,7 +134,7 @@ impl<'a> MultilineDraw<'a> {
                     + photo_size
                         .height
                         .saturating_sub(text_img.height() + margin_px);
-                overlay_rgba_on_rgb(destination, &text_img, x, y);
+                overlay_premul_rgba_on_rgb(destination, &text_img, x, y);
             }
         }
     }

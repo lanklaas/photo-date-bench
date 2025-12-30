@@ -41,9 +41,9 @@ pub fn load_bold_font() -> Result<FontRef<'static>, AppError> {
     Ok(FontRef::try_from_slice(font_data)?)
 }
 
-pub fn load_regular_font() -> Result<FontRef<'static>, AppError> {
+pub fn load_arial_bold() -> Result<FontRef<'static>, AppError> {
     // Bundle the font with the program so it works the same on Ubuntu + Windows.
-    let font_data: &[u8] = include_bytes!("../assets/Arial Regular.ttf");
+    let font_data: &[u8] = include_bytes!("../assets/ARIALBD.TTF");
     
     Ok(FontRef::try_from_slice(font_data)?)
 }
@@ -122,8 +122,8 @@ pub fn render_text_crop(font: &FontRef, text: &str, px_height: f32, color: Rgba<
     imageops::crop_imm(&tmp, min_x, min_y, crop_w, crop_h).to_image()
 }
 
-/// Simple alpha overlay: paste RGBA src onto RGB dst at (x,y).
-pub fn overlay_rgba_on_rgb(dst: &mut RgbImage, src: &RgbaImage, x: u32, y: u32) {
+/// Overlay premultiplied-alpha RGBA src onto RGB dst at (x,y).
+pub fn overlay_premul_rgba_on_rgb(dst: &mut RgbImage, src: &RgbaImage, x: u32, y: u32) {
     for sy in 0..src.height() {
         for sx in 0..src.width() {
             let dx = x + sx;
@@ -133,23 +133,15 @@ pub fn overlay_rgba_on_rgb(dst: &mut RgbImage, src: &RgbaImage, x: u32, y: u32) 
             }
 
             let sp = src.get_pixel(sx, sy);
-            let sa = sp[3] as f32 / 255.0;
-            if sa <= 0.0 {
-                continue;
-            }
+            let a = sp[3] as f32 / 255.0;
+            if a <= 0.0 { continue; }
 
             let dp = dst.get_pixel(dx, dy);
-            let sr = sp[0] as f32;
-            let sg = sp[1] as f32;
-            let sb = sp[2] as f32;
 
-            let dr = dp[0] as f32;
-            let dg = dp[1] as f32;
-            let db = dp[2] as f32;
-
-            let out_r = (sr * sa + dr * (1.0 - sa)).round().clamp(0.0, 255.0) as u8;
-            let out_g = (sg * sa + dg * (1.0 - sa)).round().clamp(0.0, 255.0) as u8;
-            let out_b = (sb * sa + db * (1.0 - sa)).round().clamp(0.0, 255.0) as u8;
+            // sp[0..2] are ALREADY multiplied by a
+            let out_r = (sp[0] as f32 + dp[0] as f32 * (1.0 - a)).round().clamp(0.0, 255.0) as u8;
+            let out_g = (sp[1] as f32 + dp[1] as f32 * (1.0 - a)).round().clamp(0.0, 255.0) as u8;
+            let out_b = (sp[2] as f32 + dp[2] as f32 * (1.0 - a)).round().clamp(0.0, 255.0) as u8;
 
             dst.put_pixel(dx, dy, Rgb([out_r, out_g, out_b]));
         }
