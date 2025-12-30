@@ -4,6 +4,25 @@ use image::imageops;
 use image::{RgbImage, Rgba, RgbaImage};
 use imageproc::drawing::draw_text_mut;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub enum DrawPosition {
+    #[default]
+    TopLeft,
+    BottomRight,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PhotoSize {
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PhotoOffset {
+    pub x: u32,
+    pub y: u32,
+}
+
 /// Draw 3 lines of text at the top-left of the photo area.
 /// - `dst`: final RGB image (full canvas)
 /// - `photo_offset`: (x,y) where the photo starts on the canvas
@@ -12,19 +31,18 @@ use imageproc::drawing::draw_text_mut;
 /// - `font`: loaded TTF font
 /// - `margin_px`: margin from photo edges
 /// - `color`: text color (RGBA)
-pub fn draw_multiline_text_top_left<S: AsRef<str>>(
+pub fn draw_multiline_text<S: AsRef<str>>(
     dst: &mut RgbImage,
-    photo_offset: (u32, u32),
-    photo_size: (u32, u32),
-    lines: [S; 3],
+    photo_offset: PhotoOffset,
+    photo_size: PhotoSize,
+    lines: &[S],
     font: &FontRef,
     margin_px: u32,
     color: Rgba<u8>,
+    position: DrawPosition,
 ) {
-    let (_photo_w, photo_h) = photo_size;
-
     // Text height ~4% of photo height (same scale logic as date)
-    let line_height_px = (photo_h as f32 * 0.04).max(12.0);
+    let line_height_px = (photo_size.height as f32 * 0.04).max(12.0);
     let scale = PxScale::from(line_height_px);
 
     // Line spacing: 120% of font size
@@ -68,9 +86,25 @@ pub fn draw_multiline_text_top_left<S: AsRef<str>>(
     let crop_h = max_y - min_y + 1;
     let text_img = imageops::crop_imm(&tmp, min_x, min_y, crop_w, crop_h).to_image();
 
-    // Final position: top-left of photo area + margin
-    let x = photo_offset.0 + margin_px;
-    let y = photo_offset.1 + margin_px;
+    match position {
+        DrawPosition::TopLeft => {
+            // Final position: top-left of photo area + margin
+            let x = photo_offset.x + margin_px;
+            let y = photo_offset.y + margin_px;
 
-    overlay_rgba_on_rgb(dst, &text_img, x, y);
+            overlay_rgba_on_rgb(dst, &text_img, x, y);
+        }
+        DrawPosition::BottomRight => {
+            // Paste bottom-right relative to the photo area (not the full canvas)
+            let x = photo_offset.x
+                + photo_size
+                    .width
+                    .saturating_sub(text_img.width() + margin_px);
+            let y = photo_offset.y
+                + photo_size
+                    .height
+                    .saturating_sub(text_img.height() + margin_px);
+            overlay_rgba_on_rgb(dst, &text_img, x, y);
+        }
+    }
 }

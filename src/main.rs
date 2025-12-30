@@ -5,6 +5,7 @@ mod parse_exif;
 
 use ab_glyph::FontRef;
 use clap::Parser;
+use draw_text::{DrawPosition, PhotoOffset, PhotoSize};
 use error::AppError;
 use image::{imageops, DynamicImage, GenericImage, ImageBuffer, Rgb, RgbImage, Rgba};
 use std::fs;
@@ -41,6 +42,7 @@ const MARGIN_MM: f32 = 5.0;
 const BACKGROUND_RGB: (u8, u8, u8) = (255, 255, 255); // white
 
 const YELLOW: Rgba<u8> = Rgba([255, 255, 84, 255]);
+const ORANGE: Rgba<u8> = Rgba([TEXT_COLOR_RGB.0, TEXT_COLOR_RGB.1, TEXT_COLOR_RGB.2, 255]);
 
 const fn mm_to_px(mm: f32) -> u32 {
     ((mm / 25.4) * DPI).round() as u32
@@ -171,42 +173,44 @@ fn process_image(
 
     final_img.copy_from(&resized, offset_x, offset_y)?;
 
-    // --- Text sizing: ~4% of photo height (similar to the Python)
-    // We render at some pixel height, crop, then if needed scale down to fit width constraints.
-    let desired_text_h = (rh as f32) * 0.04;
-    let orange = Rgba([TEXT_COLOR_RGB.0, TEXT_COLOR_RGB.1, TEXT_COLOR_RGB.2, 255]);
-
-    let mut text_img = image_ops::render_text_crop(&font, date, desired_text_h, orange);
-
-    // Ensure it fits inside the photo area with margins.
-    let max_text_w = rw.saturating_sub(2 * MARGIN_PX).max(1);
-    if text_img.width() > max_text_w {
-        let scale = max_text_w as f32 / text_img.width() as f32;
-        let new_w = (text_img.width() as f32 * scale).round().max(1.0) as u32;
-        let new_h = (text_img.height() as f32 * scale).round().max(1.0) as u32;
-        text_img = imageops::resize(&text_img, new_w, new_h, imageops::FilterType::Lanczos3);
-    }
-
-    // Paste bottom-right relative to the photo area (not the full canvas)
-    let x = offset_x + rw.saturating_sub(text_img.width() + MARGIN_PX);
-    let y = offset_y + rh.saturating_sub(text_img.height() + MARGIN_PX);
-
-    // Alpha-blend RGBA text onto RGB final image
-    image_ops::overlay_rgba_on_rgb(&mut final_img, &text_img, x, y);
-
     let number = number.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+    // Paste top-left relative to the photo area (not the full canvas)
+    draw_text::draw_multiline_text(
+        &mut final_img,
+        PhotoOffset {
+            x: offset_x,
+            y: offset_y,
+        },
+        PhotoSize {
+            width: rw,
+            height: rh,
+        },
+        &[date],
+        &font,
+        MARGIN_PX,
+        ORANGE,
+        DrawPosition::BottomRight,
+    );
 
     let toptext = format_filename_as_image_text(path, number)?;
 
     // Paste top-left relative to the photo area (not the full canvas)
-    draw_text::draw_multiline_text_top_left(
+    draw_text::draw_multiline_text(
         &mut final_img,
-        (offset_x, offset_y),
-        (rw, rh),
-        toptext,
+        PhotoOffset {
+            x: offset_x,
+            y: offset_y,
+        },
+        PhotoSize {
+            width: rw,
+            height: rh,
+        },
+        &toptext,
         &regular_font,
         MARGIN_PX,
         YELLOW,
+        DrawPosition::TopLeft,
     );
 
     // Save as sequential number
@@ -233,41 +237,21 @@ fn process_image(
 fn format_filename_as_image_text<P: AsRef<Path>>(
     path: P,
     number: usize,
-) -> Result<[String; 3], AppError> {
+) -> Result<Vec<String>, AppError> {
     let Some(name) = path.as_ref().file_name().and_then(|x| x.to_str()) else {
         return default_number_text(number);
     };
 
-    let mut splits = name.split("_");
-
-    let Some(first) = splits.next() else {
-        return default_number_text(number);
-    };
-    if first.chars().next().is_some_and(|x| x.is_ascii_digit()) {
-        return default_number_text(number);
-    }
-
-    let Some(second) = splits.next() else {
-        return Ok([
-            format!("File Nr.: {number}"),
-            first.to_string(),
-            "".to_string(),
-        ]);
-    };
-    if second.chars().next().is_some_and(|x| x.is_ascii_digit()) {
-        return default_number_text(number);
-    }
-    Ok([
-        format!("File Nr.: {number}"),
-        first.to_string(),
-        second.to_string(),
-    ])
+    let mut named_chunks = name
+        .split("_")
+        .filter(|x| x.chars().next().is_some_and(|x| !x.is_ascii_digit()))
+        .map(ToString::to_string)
+        .collect();
+    let mut ret = default_number_text(number)?;
+    ret.append(&mut named_chunks);
+    Ok(ret)
 }
 
-fn default_number_text(number: usize) -> Result<[String; 3], AppError> {
-    Ok([
-        format!("File Nr.: {number}"),
-        "".to_string(),
-        "".to_string(),
-    ])
+fn default_number_text(number: usize) -> Result<Vec<String>, AppError> {
+    Ok(vec![format!("File Nr.: {number}")])
 }
