@@ -1,4 +1,4 @@
-use std::{io, string::FromUtf8Error};
+use std::{io, path::PathBuf, string::FromUtf8Error};
 
 use ab_glyph::InvalidFont;
 use image::ImageError;
@@ -19,4 +19,6 @@ pub enum AppError {
     Utf8Parse(#[from] FromUtf8Error),
     #[error(transparent)]
     DateTimeParse(#[from] jiff::Error),
+    #[error("The file {0} could not be processed onto {1} as the numbered file already exists.")]
+    OutNumberExists(PathBuf, PathBuf),
 }

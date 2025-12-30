@@ -24,8 +24,12 @@ use walkdir::WalkDir;
 #[derive(Debug, clap::Parser)]
 #[clap(about = "A command line tool to add dates to images and rescale them")]
 struct App {
-    #[arg(help = "Path to the directory conaining the image files.")]
-    path: PathBuf,
+    #[arg(help = "Path to the directory conaining the image files to be processed")]
+    source: PathBuf,
+    #[arg(
+        help = "Path to the directory conaining the folders where the processed images should be saved."
+    )]
+    target: PathBuf,
     #[clap(
         short,
         help = "The amount of cpus to use to process images. The default is all the available cpus on the computer"
@@ -69,8 +73,12 @@ fn main() -> Result<(), AppError> {
         )
         .with(events)
         .init();
-    let App { path, threads } = App::parse();
-    let root = path;
+    let App {
+        source,
+        target,
+        threads,
+    } = App::parse();
+    let root = source;
 
     let font = image_ops::load_bold_font()?;
     let regular_font = image_ops::load_arial_bold()?;
@@ -78,7 +86,7 @@ fn main() -> Result<(), AppError> {
     // =========================
     // Auto-detect start number
     // =========================
-    let max_num = image_ops::find_max_number_jpg(&root)?;
+    let max_num = image_ops::find_max_number_jpg(&target)?;
     let number = max_num + 1;
     info!("Start number automatically set to: {}", number);
 
@@ -87,12 +95,7 @@ fn main() -> Result<(), AppError> {
     // =========================
     let mut images_by_date: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
 
-    for entry in WalkDir::new(&root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        // Ignore previously created out dirs
-        .filter(|x| !(x.path().starts_with("output_") && x.path().ends_with("_photoproc")))
-    {
+    for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -131,7 +134,7 @@ fn main() -> Result<(), AppError> {
     let tp = ThreadPool::new(work_cpus);
     let number: Arc<AtomicUsize> = Arc::new(number.into());
     for (date, list) in images_by_date.into_iter() {
-        let out_dir = root.join(format!("output_{}_photoproc", date));
+        let out_dir = target.join(&date);
         fs::create_dir_all(&out_dir)?;
 
         info!("\n➡️ Processing date {} → folder: {:?}", date, out_dir);
@@ -164,6 +167,16 @@ fn process_image(
     number: &AtomicUsize,
     out_dir: PathBuf,
 ) -> Result<(), AppError> {
+    let number = number.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+    // Save as sequential number
+    let new_name = format!("{number}.jpg");
+    let out_path = out_dir.join(&new_name);
+
+    if out_path.exists() {
+        return Err(AppError::OutNumberExists(path.to_path_buf(), out_path));
+    }
+
     let img = image::open(path)?.to_rgb8();
     let dyn_img = DynamicImage::ImageRgb8(img);
 
@@ -182,8 +195,6 @@ fn process_image(
     let offset_y = ((TARGET_H as i32 - rh as i32) / 2).max(0) as u32;
 
     final_img.copy_from(&resized, offset_x, offset_y)?;
-
-    let number = number.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
     let mut text_draw = MultilineDraw {
         photo_size: PhotoSize {
@@ -208,10 +219,6 @@ fn process_image(
 
     // Paste top-left relative to the photo area (not the full canvas)
     text_draw.draw_multiline_text(&toptext, &regular_font, fs, YELLOW, DrawPosition::TopLeft);
-
-    // Save as sequential number
-    let new_name = format!("{number}.jpg");
-    let out_path = out_dir.join(&new_name);
 
     let dyn_out = DynamicImage::ImageRgb8(final_img);
     let mut file = std::fs::File::create(&out_path)?;
