@@ -63,6 +63,7 @@ pub fn run_image_processing(
         target,
         threads,
     }: App,
+    emit: impl Fn(&str, String) + Clone + Send + 'static,
 ) -> Result<(), AppError> {
     let root = source;
     let font = image_ops::load_bold_font()?;
@@ -118,10 +119,12 @@ pub fn run_image_processing(
     info!("Using {work_cpus} cpus to process images");
     let tp = ThreadPool::new(work_cpus);
     let number: Arc<AtomicUsize> = Arc::new(number.into());
+    let total: usize = images_by_date.values().map(|x| x.len()).sum();
+    emit("process-file-total", total.to_string());
+    let complete: Arc<AtomicUsize> = Arc::new(0.into());
     for (date, list) in images_by_date.into_iter() {
         let out_dir = target.join(&date);
         fs::create_dir_all(&out_dir)?;
-
         info!("\n➡️ Processing date {} → folder: {:?}", date, out_dir);
 
         for path in list {
@@ -130,15 +133,29 @@ pub fn run_image_processing(
             let font = font.clone();
             let regular_font = regular_font.clone();
             let date = date.clone();
+            let emit = emit.clone();
+            // let emit = Arc::clone(&emit);
+            let complete = complete.clone();
             tp.execute(move || {
+                let fname = path
+                    .file_name()
+                    .and_then(|x| x.to_str())
+                    .unwrap_or_default()
+                    .to_string();
+                emit("process-file", fname.clone());
                 if let Err(e) = process_image(&path, font, regular_font, &date, &number, out_dir) {
                     error!("{e}");
                 }
+                let comp = complete.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let pct = comp as f32 / total as f32;
+                emit("process-progress", pct.to_string());
+                emit("process-file-done", fname);
             });
         }
     }
 
     tp.join();
+    emit("process-complete", "".to_string());
 
     info!("\n🎉 Done! All new photos were saved per date into separate folders and numbered.");
     Ok(())

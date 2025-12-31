@@ -72,6 +72,6 @@ pub fn run() {
 }
 
 #[tauri::command]
-fn open_download_folder(app_handle: tauri::AppHandle, output_folder: &str) {
-    app_handle.shell().open(output_folder, None).unwrap();
+fn open_download_folder(app_handle: tauri::AppHandle, target_folder: &str) {
+    app_handle.shell().open(target_folder, None).unwrap();
 }

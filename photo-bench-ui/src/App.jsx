@@ -35,41 +35,35 @@ function App() {
   const [fileCount, setFileCount] = useState(0);
 
 
-  // Listen for progress and task updates from Tauri
-  useEffect(() => {
-    if (isProcessing) {
-      // Listener for progress updates
-      const unlistenProgress = listen('process-progress', (event) => {
-        const progress = event.payload;
-        setProgress(progress);
-      });
+    // Listen for progress and task updates from Tauri
+    // Listener for progress updates
+    const unlistenProgress = listen('process-progress', (event) => {
+      const progress = event.payload;
+      setProgress(progress);
+    });
 
-      const unlistenFile = listen('process-file', (event) => {
-        const file = event.payload;
-        setFiles([...files,file]);
-      });
+    const unlistenFile = listen('process-file', (event) => {
+      const file = event.payload;
+      setFiles([...files,file]);
+    });
 
-      const unlistenFileDone = listen('process-file-done', (event) => {
-        const file = event.payload;
-        setFileCount(c => c + 1);
-        setFiles(files.filter(x=>x!=file))
-      });
+    const unlistenFileDone = listen('process-file-done', (event) => {
+      const file = event.payload;
+      setFiles(files.filter(x=>x!=file))
+    });
 
-      // Listener for process completion
-      const unlistenComplete = listen('process-complete', count => {
-        setIsProcessing(false);
-        setProgress(100);
-        setIsDone(true)
-      });
+    const unlistenFileTotal = listen('process-file-total', (event) => {
+      const fileCount = event.payload;
+      setFileCount(parseInt(fileCount));
+    });
 
-      return () => {
-        unlistenProgress.then((f) => f());
-        unlistenComplete.then((f) => f());
-        unlistenFile.then((f) => f());
-        unlistenFileDone.then((f) => f());
-      };
-    }
-  }, [isProcessing]);
+    // Listener for process completion
+    const unlistenComplete = listen('process-complete', count => {
+      setIsProcessing(false);
+      setProgress(100);
+      setIsDone(true)
+    });
+    
 
 
   const handleSelectFolder = async (folderSetFn) => {
@@ -102,6 +96,7 @@ function App() {
     setIsProcessing(true);
     setProgress(0);
     setFileCount(0);
+    setFiles([])
 
     try {
       await invoke('process_images', { sourceFolder, targetFolder }); // Replace with your Tauri command
@@ -116,7 +111,7 @@ function App() {
       <CssBaseline />
       <Container maxWidth="sm" style={{ marginTop: '5vh' }}>
         <Typography variant="h4" gutterBottom>
-          Download PDFs van gmail
+          Add date & info to pictures 
         </Typography>
         <Box component="form" noValidate autoComplete="on">
           <Box display="flex" alignItems="center" marginY={2}>
@@ -126,9 +121,7 @@ function App() {
                 variant="outlined"
                 fullWidth
                 value={sourceFolder}
-                InputProps={{
-                  readOnly: true,
-                }}
+                onChange={(event) => setSourceFolder(event.target.value)}
               />
             </Tooltip>
             <IconButton
@@ -148,9 +141,7 @@ function App() {
                 variant="outlined"
                 fullWidth
                 value={targetFolder}
-                InputProps={{
-                  readOnly: true,
-                }}
+                onChange={(event) => setTargetFolder(event.target.value)}
               />
             </Tooltip>
             <IconButton
@@ -188,7 +179,7 @@ function App() {
                 <Typography variant="caption">100%</Typography>
               </Box>
               <Typography variant="body1" gutterBottom>
-                { files.length == 0 ? 'Scanning mails...' : 'Processing file: ' + files.join(',')}
+                { fileCount == 0 ? 'Setting up...' : `Processing (${fileCount}) files: ${files.join(',')}`}
               </Typography>
             </Box>
           )}
@@ -196,7 +187,7 @@ function App() {
             isDone && (
               <Box>
                 <Typography variant="body1" gutterBottom marginTop={1}>
-                  Done. {fileCount} files downloaded
+                  Done. {fileCount} files processed
                 </Typography>
                 <Button
                   variant="contained"
