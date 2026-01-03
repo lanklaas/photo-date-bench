@@ -146,7 +146,7 @@ pub fn run_image_processing(
             #[cfg(feature = "emit-progress")]
             {
                 let comp = complete.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                let pct = comp as f32 / total as f32;
+                let pct = (comp as f32 / total as f32) * 100f32;
                 emit("process-progress", pct.to_string());
                 emit("process-file-done", fname);
             }
