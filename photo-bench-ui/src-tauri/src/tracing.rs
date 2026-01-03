@@ -24,14 +24,6 @@ where
 {
     fn on_event(&self, event: &Event<'_>, _ctx: tracing_subscriber::layer::Context<'_, S>) {
         let metadata = event.metadata();
-        eprintln!(
-            "EVENT: level={} target={} file={:?} line={:?} module={:?}",
-            metadata.level(),
-            metadata.target(),
-            metadata.file(),
-            metadata.line(),
-            metadata.module_path(),
-        );
         let level = metadata.level().to_string();
         let target = metadata.target().to_string();
 
