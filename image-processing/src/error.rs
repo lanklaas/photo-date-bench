@@ -21,4 +21,6 @@ pub enum AppError {
     DateTimeParse(#[from] jiff::Error),
     #[error("The file {0} could not be processed onto {1} as the numbered file already exists.")]
     OutNumberExists(PathBuf, PathBuf),
+    #[error("Could not get a date from the file {0:?}")]
+    NoParsibleDate(PathBuf),
 }

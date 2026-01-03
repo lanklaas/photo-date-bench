@@ -4,18 +4,19 @@ mod image_ops;
 mod parse_exif;
 
 use ab_glyph::FontRef;
+use jiff::civil::DateTime;
 
 use draw_text::{DrawPosition, FontSize, MultilineDraw, PhotoOffset, PhotoSize};
 use error::AppError;
 use image::{DynamicImage, GenericImage, ImageBuffer, Rgb, RgbImage, Rgba};
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use std::{collections::BTreeMap, path::Path};
 use threadpool::ThreadPool;
 use tracing::error;
-use tracing::{debug, info};
+use tracing::info;
 use walkdir::WalkDir;
 
 #[derive(Debug, clap::Parser)]
@@ -63,7 +64,7 @@ pub fn run_image_processing(
         target,
         threads,
     }: App,
-    emit: impl Fn(&str, String) + Clone + Send + 'static,
+    #[cfg(feature = "emit-progress")] emit: impl Fn(&str, String) + Clone + Send + 'static,
 ) -> Result<(), AppError> {
     let root = source;
     let font = image_ops::load_bold_font()?;
@@ -79,7 +80,7 @@ pub fn run_image_processing(
     // =========================
     // Collect images grouped by date
     // =========================
-    let mut images_by_date: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+    let mut images = vec![];
 
     for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
@@ -95,21 +96,7 @@ pub fn run_image_processing(
             continue;
         }
 
-        let filename = path;
-        debug!("Getting date info for {filename:?}");
-        let Some(meta_date) = parse_exif::get_image_date(filename)? else {
-            if let Some(date) = image_ops::date_from_filename(filename) {
-                images_by_date
-                    .entry(date)
-                    .or_default()
-                    .push(path.to_path_buf());
-            }
-            continue;
-        };
-        images_by_date
-            .entry(meta_date.strftime("%Y%m%d").to_string())
-            .or_default()
-            .push(path.to_path_buf());
+        images.push(path.to_path_buf());
     }
 
     // =========================
@@ -119,42 +106,55 @@ pub fn run_image_processing(
     info!("Using {work_cpus} cpus to process images");
     let tp = ThreadPool::new(work_cpus);
     let number: Arc<AtomicUsize> = Arc::new(number.into());
+    #[cfg(feature = "emit-progress")]
     let total: usize = images_by_date.values().map(|x| x.len()).sum();
+
+    #[cfg(feature = "emit-progress")]
     emit("process-file-total", total.to_string());
+    #[cfg(feature = "emit-progress")]
     let complete: Arc<AtomicUsize> = Arc::new(0.into());
-    for (date, list) in images_by_date.into_iter() {
-        let out_dir = target.join(&date);
+    for image_path in images.into_iter() {
+        let date = parse_image_date(&image_path)?;
+        let date_folder_format = date.strftime("%Y%m%d").to_string();
+        let out_dir = target.join(&date_folder_format);
         fs::create_dir_all(&out_dir)?;
         info!("\n➡️ Processing date {} → folder: {:?}", date, out_dir);
 
-        for path in list {
-            let out_dir = out_dir.clone();
-            let number = number.clone();
-            let font = font.clone();
-            let regular_font = regular_font.clone();
-            let date = date.clone();
-            let emit = emit.clone();
-            // let emit = Arc::clone(&emit);
-            let complete = complete.clone();
-            tp.execute(move || {
+        let out_dir = out_dir.clone();
+        let number = number.clone();
+        let font = font.clone();
+        let regular_font = regular_font.clone();
+
+        #[cfg(feature = "emit-progress")]
+        let emit = emit.clone();
+        #[cfg(feature = "emit-progress")]
+        let complete = complete.clone();
+        tp.execute(move || {
+            #[cfg(feature = "emit-progress")]
+            {
                 let fname = path
                     .file_name()
                     .and_then(|x| x.to_str())
                     .unwrap_or_default()
                     .to_string();
                 emit("process-file", fname.clone());
-                if let Err(e) = process_image(&path, font, regular_font, &date, &number, out_dir) {
-                    error!("{e}");
-                }
+            }
+            if let Err(e) = process_image(&image_path, font, regular_font, &date, &number, out_dir)
+            {
+                error!("{e}");
+            }
+            #[cfg(feature = "emit-progress")]
+            {
                 let comp = complete.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let pct = comp as f32 / total as f32;
                 emit("process-progress", pct.to_string());
                 emit("process-file-done", fname);
-            });
-        }
+            }
+        });
     }
 
     tp.join();
+    #[cfg(feature = "emit-progress")]
     emit("process-complete", "".to_string());
 
     info!("\n🎉 Done! All new photos were saved per date into separate folders and numbered.");
@@ -165,7 +165,7 @@ fn process_image(
     path: &Path,
     font: FontRef,
     regular_font: FontRef,
-    date: &str,
+    date: &DateTime,
     number: &AtomicUsize,
     out_dir: PathBuf,
 ) -> Result<(), AppError> {
@@ -213,7 +213,13 @@ fn process_image(
 
     let fs = FontSize { pt: 10, dpi: DPI };
 
-    text_draw.draw_multiline_text(&[date], &font, fs, ORANGE, DrawPosition::BottomRight);
+    text_draw.draw_multiline_text(
+        &[date.strftime("%d %m %Y").to_string()],
+        &font,
+        fs,
+        ORANGE,
+        DrawPosition::BottomRight,
+    );
 
     let toptext = format_filename_as_image_text(path, number)?;
 
@@ -267,4 +273,16 @@ fn filename_is_number_only(path: &Path) -> Result<bool, AppError> {
     };
 
     Ok(name.parse::<usize>().is_ok())
+}
+
+fn parse_image_date<P: AsRef<Path>>(path: P) -> Result<DateTime, AppError> {
+    let path = path.as_ref();
+    let Some(meta_date) = parse_exif::get_image_date(path)? else {
+        if let Some(date) = image_ops::date_from_filename(path) {
+            return Ok(date);
+        }
+        error!("Could not extract date from file: {path:?}");
+        return Err(AppError::NoParsibleDate(path.to_path_buf()));
+    };
+    Ok(meta_date)
 }

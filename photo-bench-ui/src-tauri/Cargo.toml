@@ -27,4 +27,4 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tauri-plugin-dialog = "2"
 tracing-appender = "0.2.3"
 anyhow = { version = "1.0.93", features = ["backtrace"] }
-photo-date-bench = { version = "0.1.0", path = "../../image-processing" }
+photo-date-bench = { version = "0.1.0", path = "../../image-processing", features = ["emit-progress"] }

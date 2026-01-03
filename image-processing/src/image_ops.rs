@@ -1,5 +1,7 @@
 
 use ab_glyph::{FontRef, PxScale};
+use jiff::civil::{Date, DateTime, Time};
+use tracing::debug;
 use crate::error::AppError;
 use image::{
     imageops, DynamicImage, GenericImageView, ImageBuffer, Rgb, RgbImage, Rgba,
@@ -12,7 +14,20 @@ use std::path::Path;
 use walkdir::WalkDir;
 
 /// Try to extract a date from filename, output "YYYY-MM-DD".
-pub fn date_from_filename<P: AsRef<Path>>(path: P) -> Option<String> {
+pub fn date_from_filename<P: AsRef<Path>>(path: P) -> Option<DateTime> {
+    let d = string_date_from_filename(path)?;
+
+    match Date::strptime("%Y-%m-%d", &d) {
+        Ok(date) => Some(date.to_datetime(Time::midnight())),
+        Err(e) => {
+            debug!("{e}. Could not parse {d} as jiff Date.");
+            None
+        }
+    }
+}
+
+/// Try to extract a date from filename, output "YYYY-MM-DD".
+fn string_date_from_filename<P: AsRef<Path>>(path: P) -> Option<String> {
     let name = path.as_ref().file_name().unwrap_or_default().to_str().expect("Filename to be utf8");
     // Patterns:
     // 1) 20251224
@@ -31,6 +46,7 @@ pub fn date_from_filename<P: AsRef<Path>>(path: P) -> Option<String> {
     if let Some(c) = re3.captures(name) {
         return Some(format!("{}-{}-{}", &c[3], &c[2], &c[1]));
     }
+       
     None
 }
 
