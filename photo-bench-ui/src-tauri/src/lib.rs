@@ -6,6 +6,8 @@ use tracing_subscriber::{
 use tauri::Manager;
 
 pub mod photobench;
+mod tracing;
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -40,24 +42,25 @@ pub fn run() {
     //     .open(&log_dir)
     //     .unwrap();
     // let (non_blocking, _guard) = tracing_appender::non_blocking(debug_file);
-    tracing_subscriber::registry()
-        // .with(
-        //     fmt::layer()
-        //         .with_writer(non_blocking)
-        //         .with_ansi(false)
-        //         .with_filter(LevelFilter::from_level(Level::DEBUG)),
-        // )
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,tiberius=error,odbc_api=error".into()),
-        )
-        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::CLOSE))
-        .init();
+    // tracing_subscriber::registry()
+    //     // .with(
+    //     //     fmt::layer()
+    //     //         .with_writer(non_blocking)
+    //     //         .with_ansi(false)
+    //     //         .with_filter(LevelFilter::from_level(Level::DEBUG)),
+    //     // )
+    //     .with(
+    //         tracing_subscriber::EnvFilter::try_from_default_env()
+    //             .unwrap_or_else(|_| "info,tiberius=error,odbc_api=error".into()),
+    //     )
+    //     .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::CLOSE))
+    //     .init();
     // info!("Logs initialized at {log_dir:?}. Log file size: {mb_size}MB");
 
     tauri::Builder::default()
         .setup(|app| {
             app.manage(AppState {});
+            tracing::init_tracing(app.app_handle().clone());
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())

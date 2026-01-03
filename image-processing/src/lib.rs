@@ -107,7 +107,7 @@ pub fn run_image_processing(
     let tp = ThreadPool::new(work_cpus);
     let number: Arc<AtomicUsize> = Arc::new(number.into());
     #[cfg(feature = "emit-progress")]
-    let total: usize = images_by_date.values().map(|x| x.len()).sum();
+    let total: usize = images.len();
 
     #[cfg(feature = "emit-progress")]
     emit("process-file-total", total.to_string());
@@ -131,14 +131,14 @@ pub fn run_image_processing(
         let complete = complete.clone();
         tp.execute(move || {
             #[cfg(feature = "emit-progress")]
-            {
-                let fname = path
-                    .file_name()
-                    .and_then(|x| x.to_str())
-                    .unwrap_or_default()
-                    .to_string();
-                emit("process-file", fname.clone());
-            }
+            let fname = image_path
+                .file_name()
+                .and_then(|x| x.to_str())
+                .unwrap_or_default()
+                .to_string();
+            #[cfg(feature = "emit-progress")]
+            emit("process-file", fname.clone());
+
             if let Err(e) = process_image(&image_path, font, regular_font, &date, &number, out_dir)
             {
                 error!("{e}");

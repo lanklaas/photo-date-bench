@@ -33,8 +33,12 @@ function App() {
   const [isDone, setIsDone] = useState(false);
   const [files, setFiles] = useState([]);
   const [fileCount, setFileCount] = useState(0);
+  const [logs, setLogs] = useState("");
 
 
+  useEffect(() => {
+    let unlistenFns = [];
+    let cancelled = false;
     // Listen for progress and task updates from Tauri
     // Listener for progress updates
     const unlistenProgress = listen('process-progress', (event) => {
@@ -63,6 +67,42 @@ function App() {
       setProgress(100);
       setIsDone(true)
     });
+
+    const appendLog = (message) => {
+      setLogs((prev) => prev + message + "\n");
+    };
+
+    const unlistenLogOutput = listen('rust-log', (event) => {
+      const logevt = event.payload;
+      appendLog(`[${logevt.level}]: ${logevt.message}`);
+    });
+
+    if (cancelled) {
+      // If component unmounted before listeners finished registering
+      unlistenProgress();
+      unlistenFile();
+      unlistenFileDone();
+      unlistenFileTotal();
+      unlistenComplete();
+      unlistenLogOutput();
+      return;
+    }
+
+    unlistenFns = [
+      unlistenProgress,
+      unlistenFile,
+      unlistenFileDone,
+      unlistenFileTotal,
+      unlistenComplete,
+      unlistenLogOutput,
+    ];
+
+    // Cleanup on unmount / hot reload
+    return () => {
+      cancelled = true;
+      for (const unlisten of unlistenFns) unlisten.then((f) => f());;
+    };
+  }, []);
     
 
 
@@ -109,7 +149,7 @@ function App() {
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <Container maxWidth="sm" style={{ marginTop: '5vh' }}>
+      <Container maxWidth="md" style={{ marginTop: '5vh' }}>
         <Typography variant="h4" gutterBottom>
           Add date & info to pictures 
         </Typography>
@@ -200,6 +240,19 @@ function App() {
               </Box>
               )
           }
+          <Box marginTop={4}>
+            <TextField
+              id="outlined-multiline-static"
+              label="Log output"
+              multiline
+              value={logs}
+              rows={15}
+              fullWidth
+              InputProps={{
+                readOnly: true,
+              }}
+            />
+          </Box>
         </Box>
         
           
