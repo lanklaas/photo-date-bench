@@ -27,6 +27,11 @@ where
         let level = metadata.level().to_string();
         let target = metadata.target().to_string();
 
+        // https://github.com/tauri-apps/tauri/issues/8494
+        if target == "tao::platform_impl::platform::event_loop::runner" {
+            return;
+        }
+
         let mut visitor = JsonVisitor(String::new());
         event.record(&mut visitor);
         let message = visitor.0;
