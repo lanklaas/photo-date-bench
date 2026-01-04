@@ -4,6 +4,7 @@ mod image_ops;
 mod parse_exif;
 
 use ab_glyph::FontRef;
+use image::codecs::jpeg::PixelDensity;
 use jiff::civil::DateTime;
 
 use draw_text::{DrawPosition, FontSize, MultilineDraw, PhotoOffset, PhotoSize};
@@ -231,6 +232,11 @@ fn process_image(
     let dyn_out = DynamicImage::ImageRgb8(final_img);
     let mut file = std::fs::File::create(&out_path)?;
     let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, 95);
+
+    // Make Word (and others) compute a sane physical size:
+    // width_in_inches = pixels / 300, etc.
+    encoder.set_pixel_density(PixelDensity::dpi(300));
+
     encoder.encode_image(&dyn_out)?;
 
     info!(
