@@ -48,12 +48,12 @@ function App() {
 
     const unlistenFile = listen('process-file', (event) => {
       const file = event.payload;
-      setFiles([...files,file]);
+      setFiles((prev) => [...prev,file]);
     });
 
     const unlistenFileDone = listen('process-file-done', (event) => {
       const file = event.payload;
-      setFiles(files.filter(x=>x!=file))
+      setFiles((prev) => prev.filter(x=>x!=file))
     });
 
     const unlistenFileTotal = listen('process-file-total', (event) => {
