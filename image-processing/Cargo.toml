@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 ab_glyph = "0.2.32"
 clap = { version = "4.5.53", features = ["derive"] }
+directories = "6.0.0"
 image = { version = "0.25.9", features = ["jpeg", "png"] }
 imageproc = "0.25.0"
 jiff = "0.2.17"
@@ -20,3 +21,7 @@ walkdir = "2.5.0"
 
 [features]
 emit-progress = []
+
+[profile.release]
+lto = "fat"
+debug = true

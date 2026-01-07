@@ -11,10 +11,15 @@ use draw_text::{DrawPosition, FontSize, MultilineDraw, PhotoOffset, PhotoSize};
 use error::AppError;
 use image::{DynamicImage, GenericImage, ImageBuffer, Rgb, RgbImage, Rgba};
 use std::fs;
+use std::fs::File;
+use std::io;
+use std::io::BufReader;
+use std::io::BufWriter;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::time::Instant;
 use threadpool::ThreadPool;
 use tracing::error;
 use tracing::info;
@@ -142,7 +147,9 @@ pub fn run_image_processing(
 
             if let Err(e) = process_image(&image_path, font, regular_font, &date, &number, out_dir)
             {
-                error!("{e}");
+                error!(
+                    "{e}, this error might have caused the cache directory not to be cleaned up."
+                );
             }
             #[cfg(feature = "emit-progress")]
             {
@@ -180,7 +187,27 @@ fn process_image(
         return Err(AppError::OutNumberExists(path.to_path_buf(), out_path));
     }
 
-    let img = image::open(path)?.to_rgb8();
+    // This is what the tauri app is named and stores the exe in the same location on install
+    let Some(proj_dir) = directories::ProjectDirs::from("", "", "photo-bench-ui") else {
+        error!("Could not find path to temp directories. Could not process file: {path:?}");
+        return Ok(());
+    };
+
+    // If the image is on a network drive, copy it first instead of processing over the network
+    let cache_dir = proj_dir.cache_dir().to_path_buf();
+    fs::create_dir_all(&cache_dir)?;
+
+    let cache_file_path = cache_dir.join(&new_name);
+
+    let mut source = BufReader::new(File::open(path)?);
+    let mut target = BufWriter::new(File::create(&cache_file_path)?);
+
+    let t = Instant::now();
+    io::copy(&mut source, &mut target)?;
+    dbg!(t.elapsed());
+
+    let img = image::open(&cache_file_path)?.to_rgb8();
+
     let dyn_img = DynamicImage::ImageRgb8(img);
 
     // Resize to fit
@@ -222,7 +249,7 @@ fn process_image(
         DrawPosition::BottomRight,
     );
 
-    let toptext = format_filename_as_image_text(path, number)?;
+    let toptext = format_filename_as_image_text(&cache_file_path, number)?;
 
     let fs = FontSize { pt: 8, dpi: DPI };
 
@@ -230,7 +257,9 @@ fn process_image(
     text_draw.draw_multiline_text(&toptext, &regular_font, fs, YELLOW, DrawPosition::TopLeft);
 
     let dyn_out = DynamicImage::ImageRgb8(final_img);
-    let mut file = std::fs::File::create(&out_path)?;
+
+    let cache_out_file = cache_dir.join(format!("{number}_out.jpg"));
+    let mut file = std::fs::File::create(&cache_out_file)?;
     let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, 95);
 
     // Make Word (and others) compute a sane physical size:
@@ -238,6 +267,21 @@ fn process_image(
     encoder.set_pixel_density(PixelDensity::dpi(300));
 
     encoder.encode_image(&dyn_out)?;
+
+    if let Err(e) = fs::remove_file(&cache_file_path) {
+        error!("{e:?}. Could not remove cached file.");
+    }
+
+    let mut source = BufReader::new(File::open(&cache_out_file)?);
+    let mut target = BufWriter::new(File::create(&out_path)?);
+
+    let t = Instant::now();
+    io::copy(&mut source, &mut target)?;
+    dbg!(t.elapsed());
+
+    if let Err(e) = fs::remove_file(&cache_out_file) {
+        error!("{e:?}. Could not remove cached ouput file.");
+    }
 
     info!(
         "✅ {} → {}",

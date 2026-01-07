@@ -1,13 +1,12 @@
 
-use ab_glyph::{FontRef, PxScale};
+use ab_glyph::FontRef;
 use jiff::civil::{Date, DateTime, Time};
 use tracing::debug;
 use crate::error::AppError;
 use image::{
-    imageops, DynamicImage, GenericImageView, ImageBuffer, Rgb, RgbImage, Rgba,
+    imageops, DynamicImage, GenericImageView, Rgb, RgbImage,
     RgbaImage,
 };
-use imageproc::drawing::draw_text_mut;
 use regex::Regex;
 use std::ffi::OsStr;
 use std::path::Path;
@@ -99,44 +98,6 @@ pub fn resize_to_fit(img: &DynamicImage, target_w: u32, target_h: u32) -> Dynami
     img.resize(target_w, target_h, imageops::FilterType::Lanczos3)
 }
 
-/// Create a transparent RGBA image, render text, and return its tight bounding box crop.
-pub fn render_text_crop(font: &FontRef, text: &str, px_height: f32, color: Rgba<u8>) -> RgbaImage {
-    // Render on a generous canvas first, then crop to bounding box of non-transparent pixels.
-    let canvas_w = 2000u32;
-    let canvas_h = 800u32;
-    let mut tmp: RgbaImage = ImageBuffer::from_pixel(canvas_w, canvas_h, Rgba([0, 0, 0, 0]));
-
-    let scale = PxScale::from(px_height.max(1.0));
-    draw_text_mut(&mut tmp, color, 0, 0, scale, font, text);
-
-    // Find bounding box of non-transparent pixels.
-    let mut min_x = canvas_w;
-    let mut min_y = canvas_h;
-    let mut max_x = 0u32;
-    let mut max_y = 0u32;
-    let mut found = false;
-
-    for y in 0..canvas_h {
-        for x in 0..canvas_w {
-            let a = tmp.get_pixel(x, y)[3];
-            if a != 0 {
-                found = true;
-                min_x = min_x.min(x);
-                min_y = min_y.min(y);
-                max_x = max_x.max(x);
-                max_y = max_y.max(y);
-            }
-        }
-    }
-
-    if !found {
-        return ImageBuffer::from_pixel(1, 1, Rgba([0, 0, 0, 0]));
-    }
-
-    let crop_w = (max_x - min_x + 1).max(1);
-    let crop_h = (max_y - min_y + 1).max(1);
-    imageops::crop_imm(&tmp, min_x, min_y, crop_w, crop_h).to_image()
-}
 
 /// Overlay premultiplied-alpha RGBA src onto RGB dst at (x,y).
 pub fn overlay_premul_rgba_on_rgb(dst: &mut RgbImage, src: &RgbaImage, x: u32, y: u32) {
