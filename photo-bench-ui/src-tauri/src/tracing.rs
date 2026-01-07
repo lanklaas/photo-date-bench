@@ -1,6 +1,6 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use tracing::{Event, Subscriber};
+use tracing::{info, Event, Level, Subscriber};
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
@@ -26,6 +26,10 @@ where
         let metadata = event.metadata();
         let level = metadata.level().to_string();
         let target = metadata.target().to_string();
+
+        if target == "tao::platform_impl::platform::event_loop::runner" {
+            return;
+        }
 
         let mut visitor = JsonVisitor(String::new());
         event.record(&mut visitor);
