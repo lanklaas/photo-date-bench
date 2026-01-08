@@ -272,9 +272,7 @@ fn process_image(
     let mut source = BufReader::new(File::open(&cache_out_file)?);
     let mut target = BufWriter::new(File::create(&out_path)?);
 
-    let t = Instant::now();
     io::copy(&mut source, &mut target)?;
-    dbg!(t.elapsed());
 
     if let Err(e) = fs::remove_file(&cache_out_file) {
         error!("{e:?}. Could not remove cached ouput file.");
