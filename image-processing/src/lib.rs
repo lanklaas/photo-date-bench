@@ -19,7 +19,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use std::time::Instant;
 use threadpool::ThreadPool;
 use tracing::error;
 use tracing::info;
@@ -202,9 +201,7 @@ fn process_image(
     let mut source = BufReader::new(File::open(path)?);
     let mut target = BufWriter::new(File::create(&cache_file_path)?);
 
-    let t = Instant::now();
     io::copy(&mut source, &mut target)?;
-    dbg!(t.elapsed());
 
     let img = image::open(&cache_file_path)?.to_rgb8();
 
@@ -249,7 +246,7 @@ fn process_image(
         DrawPosition::BottomRight,
     );
 
-    let toptext = format_filename_as_image_text(&cache_file_path, number)?;
+    let toptext = format_filename_as_image_text(path, number)?;
 
     let fs = FontSize { pt: 8, dpi: DPI };
 
